@@ -1,0 +1,13 @@
+Setup Instructions for Computer B
+1. Create database in MySQL
+sql
+CREATE DATABASE worker_go_db;
+2. Set environment variables and run
+bash
+cd worker-go
+set MYSQL_PORT=3309
+set MYSQL_USER=root
+set MYSQL_PASS=
+set MYSQL_DATABASE=worker_go_db
+go mod tidy
+go run .
