@@ -1,135 +1,397 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distributed Database - Master GUI</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1000; }
-        .modal-content { background: white; margin: 10% auto; padding: 20px; width: 500px; border-radius: 10px; }
-        input, select { border: 1px solid #ddd; padding: 8px; border-radius: 5px; width: 100%; margin-bottom: 10px; }
-        .column-row { display: flex; gap: 10px; margin-bottom: 10px; align-items: center; }
-        .column-row input { margin-bottom: 0; }
-        .btn-add { background: #10b981; color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer; border: none; }
-        .btn-remove { background: #ef4444; color: white; padding: 5px 10px; border-radius: 5px; cursor: pointer; border: none; }
-    </style>
+    <title>DistribDB — Admin Console</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Syne:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/ui/style.css">
 </head>
-<body class="bg-gray-100">
-    <div class="container mx-auto p-6">
-        <h1 class="text-3xl font-bold mb-6">Distributed Database System</h1>
-        
-        <div class="bg-white rounded-lg shadow p-4 mb-6">
-            <h2 class="text-xl font-semibold mb-3">Node Status</h2>
-            <div id="workerStatus" class="flex gap-4">
-                <span class="px-3 py-1 rounded-full bg-gray-200">Loading...</span>
-            </div>
-        </div>
+<body>
 
-        <div class="grid grid-cols-3 gap-6">
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-xl font-semibold mb-3">Databases</h2>
-                <div id="databasesList" class="space-y-2 max-h-96 overflow-y-auto"></div>
-                <button onclick="openCreateDBModal()" class="mt-4 w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">
-                    + New Database
-                </button>
-            </div>
+<!-- Toast Container -->
+<div id="toastContainer" class="toast-container"></div>
 
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-xl font-semibold mb-3">Tables</h2>
-                <div id="tablesList" class="space-y-2 max-h-96 overflow-y-auto">
-                    <p class="text-gray-500 text-sm">Select a database first</p>
-                </div>
-                <button onclick="openCreateTableModal()" class="mt-4 w-full bg-blue-500 text-white py-2 rounded hover:bg-blue-600">
-                    + New Table
-                </button>
-            </div>
-
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-xl font-semibold mb-3">Records</h2>
-                <div id="recordsContent" class="max-h-96 overflow-y-auto">
-                    <p class="text-gray-500 text-sm">Select a table to view records</p>
-                </div>
-                <button onclick="openInsertModal()" class="mt-4 w-full bg-green-500 text-white py-2 rounded hover:bg-green-600">
-                    + Insert Record
-                </button>
-            </div>
-        </div>
-
-        <div class="grid grid-cols-2 gap-6 mt-6">
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-xl font-semibold mb-3">Go Worker - Analytics</h2>
-                <div class="flex gap-2">
-                    <select id="analyticsDb" class="border rounded p-2 flex-1"></select>
-                    <select id="analyticsTable" class="border rounded p-2 flex-1"></select>
-                    <button onclick="runAnalytics()" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600">Run</button>
-                </div>
-                <pre id="analyticsResult" class="mt-3 bg-gray-900 text-green-400 p-3 rounded overflow-x-auto text-sm hidden"></pre>
-            </div>
-
-            <div class="bg-white rounded-lg shadow p-4">
-                <h2 class="text-xl font-semibold mb-3">Python Worker - Transform</h2>
-                <div class="space-y-2">
-                    <select id="transformDb" class="border rounded p-2 w-full"></select>
-                    <select id="transformTable" class="border rounded p-2 w-full"></select>
-                    <button onclick="runTransform()" class="bg-purple-500 text-white px-4 py-2 rounded hover:bg-purple-600 w-full">Run Transform</button>
-                </div>
-                <pre id="transformResult" class="mt-3 bg-gray-900 text-green-400 p-3 rounded overflow-x-auto text-sm hidden"></pre>
-            </div>
+<!-- Confirmation Dialog -->
+<div id="confirmDialog" class="confirm-overlay" style="display:none">
+    <div class="confirm-box">
+        <div class="confirm-icon">⚠</div>
+        <h3 id="confirmTitle">Are you sure?</h3>
+        <p id="confirmMessage">This action cannot be undone.</p>
+        <div class="confirm-actions">
+            <button id="confirmCancel" class="btn btn-ghost">Cancel</button>
+            <button id="confirmOk" class="btn btn-danger">Confirm</button>
         </div>
     </div>
+</div>
 
-    <!-- Create DB Modal -->
-    <div id="createDBModal" class="modal">
-        <div class="modal-content">
-            <h2 class="text-xl font-bold mb-4">Create New Database</h2>
-            <input type="text" id="dbName" placeholder="Database Name" class="w-full border p-2 rounded">
-            <div class="flex justify-end gap-2 mt-4">
-                <button onclick="closeCreateDBModal()" class="bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
-                <button onclick="createDatabase()" class="bg-blue-500 text-white px-4 py-2 rounded">Create</button>
-            </div>
+<!-- Top Navigation -->
+<nav class="topnav">
+    <div class="topnav-left">
+        <button class="sidebar-toggle" id="sidebarToggle" onclick="toggleSidebar()">
+            <span></span><span></span><span></span>
+        </button>
+        <div class="logo">
+            <span class="logo-icon">⬡</span>
+            <span class="logo-text">DistribDB</span>
+            <span class="logo-badge">Admin</span>
         </div>
     </div>
+    <div class="topnav-center" id="breadcrumb">
+        <span class="bc-item">System</span>
+    </div>
+    <div class="topnav-right">
+        <div class="status-pill" id="globalStatus">
+            <span class="status-dot"></span>
+            <span>Connecting…</span>
+        </div>
+        <div class="clock" id="clock"></div>
+        <button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">☀</button>
+    </div>
+</nav>
 
-    <!-- Create Table Modal -->
-    <div id="createTableModal" class="modal">
-        <div class="modal-content" style="width: 600px;">
-            <h2 class="text-xl font-bold mb-4">Create New Table</h2>
-            <input type="text" id="tableName" placeholder="Table Name" class="w-full border p-2 rounded mb-3">
-            <h3 class="font-semibold mb-2">Columns:</h3>
-            <div id="columnsContainer"></div>
-            <button onclick="addColumn()" class="btn-add mb-3">+ Add Column</button>
-            <div class="flex justify-end gap-2 mt-4">
-                <button onclick="closeCreateTableModal()" class="bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
-                <button onclick="createTable()" class="bg-blue-500 text-white px-4 py-2 rounded">Create Table</button>
+<!-- Layout Wrapper -->
+<div class="layout" id="layout">
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-section">
+            <p class="sidebar-label">Navigation</p>
+            <button class="sidebar-item active" onclick="showPanel('explorer')">
+                <span class="si-icon">◈</span> Explorer
+            </button>
+            <button class="sidebar-item" onclick="showPanel('workers')">
+                <span class="si-icon">◉</span> Workers
+            </button>
+            <button class="sidebar-item" onclick="showPanel('analytics')">
+                <span class="si-icon">◇</span> Analytics
+            </button>
+            <button class="sidebar-item" onclick="showPanel('transform')">
+                <span class="si-icon">◆</span> Transform
+            </button>
+            <button class="sidebar-item" onclick="showPanel('activity')">
+                <span class="si-icon">≡</span> Activity Log
+            </button>
+        </div>
+        <div class="sidebar-section">
+            <p class="sidebar-label">Quick Actions</p>
+            <button class="sidebar-item" onclick="openCreateDBModal()" id="kbNewDb">
+                <span class="si-icon">+</span> New Database
+                <kbd>^N</kbd>
+            </button>
+            <button class="sidebar-item" onclick="openCreateTableModal()">
+                <span class="si-icon">+</span> New Table
+                <kbd>^T</kbd>
+            </button>
+            <button class="sidebar-item" onclick="openInsertModal()">
+                <span class="si-icon">+</span> Insert Record
+                <kbd>^I</kbd>
+            </button>
+        </div>
+        <div class="sidebar-footer">
+            <button class="btn btn-sm btn-ghost" onclick="loadStatus()">↺ Refresh</button>
+        </div>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+
+        <!-- PANEL: Explorer -->
+        <div id="panel-explorer" class="panel active">
+            <div class="explorer-grid">
+
+                <!-- Databases Column -->
+                <div class="explorer-col">
+                    <div class="col-header">
+                        <div class="col-title">
+                            <span class="col-icon">⬡</span>
+                            <h2>Databases</h2>
+                            <span class="count-badge" id="dbCount">0</span>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="openCreateDBModal()">+ New</button>
+                    </div>
+                    <div class="search-bar">
+                        <span class="search-icon">⌕</span>
+                        <input type="text" placeholder="Filter databases…" id="dbSearch" oninput="filterDatabases(this.value)">
+                    </div>
+                    <div id="databasesList" class="list-container">
+                        <div class="empty-state">
+                            <div class="empty-icon">⬡</div>
+                            <p>No databases yet</p>
+                            <button class="btn btn-sm btn-primary" onclick="openCreateDBModal()">Create first DB</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tables Column -->
+                <div class="explorer-col">
+                    <div class="col-header">
+                        <div class="col-title">
+                            <span class="col-icon">▦</span>
+                            <h2>Tables</h2>
+                            <span class="count-badge" id="tableCount">0</span>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="openCreateTableModal()">+ New</button>
+                    </div>
+                    <div class="search-bar">
+                        <span class="search-icon">⌕</span>
+                        <input type="text" placeholder="Filter tables…" id="tableSearch" oninput="filterTables(this.value)">
+                    </div>
+                    <div id="tablesList" class="list-container">
+                        <div class="empty-state">
+                            <div class="empty-icon">▦</div>
+                            <p>Select a database first</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Records Column -->
+                <div class="explorer-col records-col">
+                    <div class="col-header">
+                        <div class="col-title">
+                            <span class="col-icon">≡</span>
+                            <h2 id="recordsTitle">Records</h2>
+                            <span class="count-badge" id="recordCount">0</span>
+                        </div>
+                        <div class="records-actions">
+                            <button class="btn btn-sm btn-ghost" id="exportBtn" onclick="exportCSV()" style="display:none" title="Export CSV">↓ CSV</button>
+                            <button class="btn btn-sm btn-success" onclick="openInsertModal()">+ Insert</button>
+                        </div>
+                    </div>
+                    <div class="records-toolbar" id="recordsToolbar" style="display:none">
+                        <div class="search-bar" style="flex:1">
+                            <span class="search-icon">⌕</span>
+                            <input type="text" placeholder="Search records…" id="recordSearch" oninput="filterRecords(this.value)">
+                        </div>
+                        <select class="select-sm" id="pageSizeSelect" onchange="changePageSize(this.value)">
+                            <option value="10">10 / page</option>
+                            <option value="25">25 / page</option>
+                            <option value="50">50 / page</option>
+                        </select>
+                    </div>
+                    <div id="recordsContent" class="list-container records-container">
+                        <div class="empty-state">
+                            <div class="empty-icon">≡</div>
+                            <p>Select a table to view records</p>
+                        </div>
+                    </div>
+                    <div id="pagination" class="pagination" style="display:none"></div>
+                </div>
+
             </div>
         </div>
-    </div>
 
-    <!-- Insert Record Modal -->
-    <div id="insertModal" class="modal">
-        <div class="modal-content" style="width: 500px;">
-            <h2 class="text-xl font-bold mb-4">Insert Record into <span id="insertTableName"></span></h2>
+        <!-- PANEL: Workers -->
+        <div id="panel-workers" class="panel">
+            <div class="panel-header">
+                <h2>Worker Nodes</h2>
+                <p class="panel-subtitle">Real-time health of distributed database nodes</p>
+            </div>
+            <div id="workerCards" class="worker-grid">
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+                <div class="skeleton-card"></div>
+            </div>
+        </div>
+
+        <!-- PANEL: Analytics -->
+        <div id="panel-analytics" class="panel">
+            <div class="panel-header">
+                <h2>Go Worker — Analytics</h2>
+                <p class="panel-subtitle">Run distributed analytics queries across nodes</p>
+            </div>
+            <div class="task-card">
+                <div class="task-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Database</label>
+                            <select id="analyticsDb" class="select" onchange="loadAnalyticsTables()">
+                                <option value="">Select database…</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Table</label>
+                            <select id="analyticsTable" class="select">
+                                <option value="">Select table…</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="runAnalytics()" id="analyticsBtn">
+                            <span class="btn-icon">▷</span> Run Analytics
+                        </button>
+                    </div>
+                </div>
+                <div id="analyticsResult" class="result-box" style="display:none">
+                    <div class="result-header">
+                        <span>Output</span>
+                        <button class="btn btn-sm btn-ghost" onclick="copyResult('analyticsResult')">⎘ Copy</button>
+                    </div>
+                    <pre id="analyticsResultPre" class="result-pre"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL: Transform -->
+        <div id="panel-transform" class="panel">
+            <div class="panel-header">
+                <h2>Python Worker — Transform</h2>
+                <p class="panel-subtitle">Apply transformation pipelines to your data</p>
+            </div>
+            <div class="task-card">
+                <div class="task-form">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Database</label>
+                            <select id="transformDb" class="select" onchange="loadTransformTables()">
+                                <option value="">Select database…</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Table</label>
+                            <select id="transformTable" class="select">
+                                <option value="">Select table…</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Preset Template</label>
+                        <div class="preset-grid">
+                            <button class="preset-btn active" onclick="setPreset('engineering', this)">Engineering Salaries</button>
+                            <button class="preset-btn" onclick="setPreset('topN', this)">Top 10 Records</button>
+                            <button class="preset-btn" onclick="setPreset('custom', this)">Custom JSON</button>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Transformations JSON</label>
+                        <textarea id="transformJson" class="code-textarea" rows="6"></textarea>
+                    </div>
+                    <button class="btn btn-primary" onclick="runTransform()" id="transformBtn">
+                        <span class="btn-icon">⚙</span> Run Transform
+                    </button>
+                </div>
+                <div id="transformResult" class="result-box" style="display:none">
+                    <div class="result-header">
+                        <span>Output</span>
+                        <button class="btn btn-sm btn-ghost" onclick="copyResult('transformResult')">⎘ Copy</button>
+                    </div>
+                    <pre id="transformResultPre" class="result-pre"></pre>
+                </div>
+            </div>
+        </div>
+
+        <!-- PANEL: Activity Log -->
+        <div id="panel-activity" class="panel">
+            <div class="panel-header">
+                <h2>Activity Log</h2>
+                <p class="panel-subtitle">Recent operations in this session</p>
+                <button class="btn btn-sm btn-ghost" onclick="clearLog()">Clear</button>
+            </div>
+            <div id="activityLog" class="activity-log">
+                <div class="empty-state">
+                    <div class="empty-icon">≡</div>
+                    <p>No activity yet</p>
+                </div>
+            </div>
+        </div>
+
+    </main>
+</div>
+
+<!-- ===== MODALS ===== -->
+
+<!-- Create Database Modal -->
+<div id="createDBModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>⬡ Create Database</h3>
+            <button class="modal-close" onclick="closeCreateDBModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Database Name</label>
+                <input type="text" id="dbName" class="input" placeholder="e.g. users_db" autocomplete="off">
+                <p class="field-hint">Use lowercase letters, numbers, and underscores only.</p>
+                <p class="field-error" id="dbNameError"></p>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeCreateDBModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="createDatabase()">Create Database</button>
+        </div>
+    </div>
+</div>
+
+<!-- Create Table Modal -->
+<div id="createTableModal" class="modal-overlay" style="display:none">
+    <div class="modal modal-lg">
+        <div class="modal-header">
+            <h3>▦ Create Table</h3>
+            <button class="modal-close" onclick="closeCreateTableModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label>Table Name</label>
+                <input type="text" id="tableName" class="input" placeholder="e.g. employees" autocomplete="off">
+                <p class="field-error" id="tableNameError"></p>
+            </div>
+            <div class="form-group">
+                <label>Column Templates</label>
+                <div class="preset-grid">
+                    <button class="preset-btn" onclick="addTemplateColumns('user')">👤 User</button>
+                    <button class="preset-btn" onclick="addTemplateColumns('product')">📦 Product</button>
+                    <button class="preset-btn" onclick="addTemplateColumns('order')">🛒 Order</button>
+                    <button class="preset-btn" onclick="addTemplateColumns('log')">📋 Log Entry</button>
+                </div>
+            </div>
+            <div class="columns-section">
+                <div class="columns-header">
+                    <label>Columns</label>
+                    <button class="btn btn-sm btn-success" onclick="addColumn()">+ Add Column</button>
+                </div>
+                <div id="columnsContainer" class="columns-list"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeCreateTableModal()">Cancel</button>
+            <button class="btn btn-primary" onclick="createTable()">Create Table</button>
+        </div>
+    </div>
+</div>
+
+<!-- Insert Record Modal -->
+<div id="insertModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>+ Insert Record <span class="modal-subtitle" id="insertTableName"></span></h3>
+            <button class="modal-close" onclick="closeInsertModal()">×</button>
+        </div>
+        <div class="modal-body">
             <div id="insertFieldsContainer"></div>
-            <div class="flex justify-end gap-2 mt-4">
-                <button onclick="closeInsertModal()" class="bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
-                <button onclick="insertRecord()" class="bg-green-500 text-white px-4 py-2 rounded">Insert</button>
-            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeInsertModal()">Cancel</button>
+            <button class="btn btn-success" onclick="insertRecord()">Insert Record</button>
         </div>
     </div>
+</div>
 
-    <!-- Update Record Modal -->
-    <div id="updateModal" class="modal">
-        <div class="modal-content" style="width: 500px;">
-            <h2 class="text-xl font-bold mb-4">Update Record</h2>
+<!-- Update Record Modal -->
+<div id="updateModal" class="modal-overlay" style="display:none">
+    <div class="modal">
+        <div class="modal-header">
+            <h3>✎ Update Record</h3>
+            <button class="modal-close" onclick="closeUpdateModal()">×</button>
+        </div>
+        <div class="modal-body">
             <div id="updateFieldsContainer"></div>
-            <div class="flex justify-end gap-2 mt-4">
-                <button onclick="closeUpdateModal()" class="bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
-                <button onclick="updateRecord()" class="bg-yellow-500 text-white px-4 py-2 rounded">Update</button>
-            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-ghost" onclick="closeUpdateModal()">Cancel</button>
+            <button class="btn btn-warning" onclick="updateRecord()">Save Changes</button>
         </div>
     </div>
+</div>
 
-    <script src="/ui/script.js"></script>
+<script src="/ui/script.js"></script>
 </body>
 </html>
