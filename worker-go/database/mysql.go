@@ -11,6 +11,12 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 )
 
+type InsertRequest struct {
+	Database string                 `json:"database"`
+	Table    string                 `json:"table"`
+	Fields   map[string]interface{} `json:"fields"`
+}
+
 type MySQLDB struct {
 	db *sql.DB
 }
@@ -42,6 +48,40 @@ type TableSchema struct {
 	Name      string   `json:"name"`
 	Columns   []Column `json:"columns"`
 	CreatedAt string   `json:"created_at,omitempty"`
+}
+
+func (m *MySQLDB) Insert(dbName, tableName string, fields map[string]interface{}) (*Record, error) {
+	safeTableName := fmt.Sprintf("%s__%s", dbName, tableName)
+	safeTableName = strings.ReplaceAll(safeTableName, "-", "_")
+	safeTableName = strings.ReplaceAll(safeTableName, " ", "_")
+
+	// Generate ID first
+	id := generateID()
+
+	columns := []string{"id"}
+	values := []interface{}{id}
+	placeholders := []string{"?"}
+
+	for k, v := range fields {
+		columns = append(columns, k)
+		values = append(values, v)
+		placeholders = append(placeholders, "?")
+	}
+
+	query := fmt.Sprintf("INSERT INTO `%s` (%s) VALUES (%s)",
+		safeTableName,
+		strings.Join(columns, ", "),
+		strings.Join(placeholders, ", "))
+
+	_, err := m.db.Exec(query, values...)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Record{
+		ID:     id,
+		Fields: fields,
+	}, nil
 }
 
 func NewMySQLDB(host, port, user, password, dbName string) (*MySQLDB, error) {

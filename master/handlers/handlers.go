@@ -41,6 +41,7 @@ func (h *Handler) CreateDatabase(w http.ResponseWriter, r *http.Request) {
 		respond(w, http.StatusMethodNotAllowed, models.APIResponse{Error: "method not allowed"})
 		return
 	}
+
 	var req models.CreateDBRequest
 	if err := decodeBody(r, &req); err != nil || req.Name == "" {
 		respond(w, http.StatusBadRequest, models.APIResponse{Error: "invalid request body; 'name' is required"})
@@ -62,6 +63,7 @@ func (h *Handler) DropDatabase(w http.ResponseWriter, r *http.Request) {
 		respond(w, http.StatusMethodNotAllowed, models.APIResponse{Error: "method not allowed"})
 		return
 	}
+
 	var req models.DropDBRequest
 	if err := decodeBody(r, &req); err != nil || req.Name == "" {
 		respond(w, http.StatusBadRequest, models.APIResponse{Error: "invalid request body; 'name' is required"})
@@ -96,6 +98,7 @@ func (h *Handler) CreateTable(w http.ResponseWriter, r *http.Request) {
 		respond(w, http.StatusMethodNotAllowed, models.APIResponse{Error: "method not allowed"})
 		return
 	}
+
 	var req models.CreateTableRequest
 	if err := decodeBody(r, &req); err != nil || req.Database == "" || req.Table == "" {
 		respond(w, http.StatusBadRequest, models.APIResponse{Error: "invalid request; 'database' and 'table' are required"})
@@ -153,6 +156,7 @@ func (h *Handler) Insert(w http.ResponseWriter, r *http.Request) {
 		respond(w, http.StatusMethodNotAllowed, models.APIResponse{Error: "method not allowed"})
 		return
 	}
+
 	var req models.InsertRequest
 	if err := decodeBody(r, &req); err != nil || req.Database == "" || req.Table == "" {
 		respond(w, http.StatusBadRequest, models.APIResponse{Error: "invalid request; 'database', 'table', and 'fields' are required"})
@@ -201,7 +205,6 @@ func (h *Handler) Select(w http.ResponseWriter, r *http.Request) {
 	if records == nil {
 		records = []*database.Record{}
 	}
-	// Convert to model records
 	result := make([]*models.Record, len(records))
 	for i, r := range records {
 		result[i] = &models.Record{
@@ -217,6 +220,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 		respond(w, http.StatusMethodNotAllowed, models.APIResponse{Error: "method not allowed"})
 		return
 	}
+
 	var req models.UpdateRequest
 	if err := decodeBody(r, &req); err != nil || req.Database == "" || req.Table == "" || req.ID == "" {
 		respond(w, http.StatusBadRequest, models.APIResponse{Error: "invalid request; 'database', 'table', 'id', and 'fields' are required"})
@@ -241,6 +245,7 @@ func (h *Handler) Delete(w http.ResponseWriter, r *http.Request) {
 		respond(w, http.StatusMethodNotAllowed, models.APIResponse{Error: "method not allowed"})
 		return
 	}
+
 	var req models.DeleteRequest
 	if err := decodeBody(r, &req); err != nil || req.Database == "" || req.Table == "" || req.ID == "" {
 		respond(w, http.StatusBadRequest, models.APIResponse{Error: "invalid request; 'database', 'table', and 'id' are required"})

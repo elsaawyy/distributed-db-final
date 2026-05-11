@@ -1,21 +1,25 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/elsaawyy/distributed-db/worker-go/database"
+	"github.com/elsaawyy/distributed-db/worker-go/election"
 )
 
 type Handler struct {
-	db *database.MySQLDB
+	db       *database.MySQLDB
+	raftNode *election.RaftNode
 }
 
-func NewHandler(db *database.MySQLDB) *Handler {
-	return &Handler{db: db}
+func NewHandler(db *database.MySQLDB, raftNode *election.RaftNode) *Handler {
+	return &Handler{db: db, raftNode: raftNode}
 }
 
 type APIResponse struct {
@@ -31,12 +35,24 @@ func respond(w http.ResponseWriter, status int, resp APIResponse) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-// Replicate handles POST /replicate - called by Master
 func (h *Handler) Replicate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		respond(w, http.StatusMethodNotAllowed, APIResponse{Error: "method not allowed"})
 		return
 	}
+
+	// --- API Key Authentication ---
+	expectedKey := os.Getenv("API_KEY")
+	if expectedKey == "" {
+		expectedKey = "default-secret-change-me"
+	}
+	providedKey := r.Header.Get("X-API-Key")
+	if providedKey != expectedKey {
+		log.Printf("[SECURITY] Unauthorized replication attempt from %s", r.RemoteAddr)
+		respond(w, http.StatusForbidden, APIResponse{Error: "unauthorized: invalid API key"})
+		return
+	}
+	// -----------------------------
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -60,7 +76,6 @@ func (h *Handler) Replicate(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, APIResponse{Success: true, Message: "Replicated: " + payload.Operation})
 }
 
-// Select handles GET /select - fault-tolerant reads
 func (h *Handler) Select(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		respond(w, http.StatusMethodNotAllowed, APIResponse{Error: "method not allowed"})
@@ -96,7 +111,6 @@ func (h *Handler) Select(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, APIResponse{Success: true, Data: records})
 }
 
-// Analytics handles GET /analytics - special task
 func (h *Handler) Analytics(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		respond(w, http.StatusMethodNotAllowed, APIResponse{Error: "method not allowed"})
@@ -125,14 +139,15 @@ func (h *Handler) Analytics(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Health handles GET /health
 func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	respond(w, http.StatusOK, APIResponse{
 		Success: true,
 		Message: "Go Worker is healthy",
 		Data: map[string]interface{}{
-			"node": "worker-go",
-			"time": time.Now().Format(time.RFC3339),
+			"node":     "worker-go",
+			"time":     time.Now().Format(time.RFC3339),
+			"isLeader": h.raftNode.IsLeader(),
+			"leader":   h.raftNode.GetLeaderAddr(),
 			"databases": func() []string {
 				dbs, _ := h.db.ListDatabases()
 				return dbs
@@ -141,7 +156,6 @@ func (h *Handler) Health(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Status handles GET /status
 func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 	databases, err := h.db.ListDatabases()
 	if err != nil {
@@ -153,7 +167,98 @@ func (h *Handler) Status(w http.ResponseWriter, r *http.Request) {
 		Success: true,
 		Data: map[string]interface{}{
 			"node":      "worker-go",
+			"isLeader":  h.raftNode.IsLeader(),
+			"leader":    h.raftNode.GetLeaderAddr(),
 			"databases": databases,
 		},
+	})
+}
+
+func (h *Handler) Insert(w http.ResponseWriter, r *http.Request) {
+	// Only accept writes if I am the leader
+	if !h.raftNode.IsLeader() {
+		leader := h.raftNode.GetLeaderAddr()
+		if leader != "" {
+			http.Redirect(w, r, leader+r.URL.Path, http.StatusTemporaryRedirect)
+			return
+		}
+		respond(w, http.StatusServiceUnavailable, APIResponse{Error: "No leader available. Master is down and no worker has been elected yet."})
+		return
+	}
+
+	// I am leader, handle the write
+	var req struct {
+		Database string                 `json:"database"`
+		Table    string                 `json:"table"`
+		Fields   map[string]interface{} `json:"fields"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond(w, http.StatusBadRequest, APIResponse{Error: "invalid request body"})
+		return
+	}
+
+	if req.Database == "" || req.Table == "" {
+		respond(w, http.StatusBadRequest, APIResponse{Error: "'database' and 'table' are required"})
+		return
+	}
+
+	record, err := h.db.Insert(req.Database, req.Table, req.Fields)
+	if err != nil {
+		respond(w, http.StatusBadRequest, APIResponse{Error: err.Error()})
+		return
+	}
+
+	// Replicate to other worker
+	otherWorker := h.raftNode.GetOtherWorkerAddr()
+	if otherWorker != "" {
+		go func() {
+			payload := database.ReplicationPayload{
+				Operation: "insert",
+				Database:  req.Database,
+				Table:     req.Table,
+				Record:    record,
+			}
+			data, _ := json.Marshal(payload)
+			client := &http.Client{Timeout: 5 * time.Second}
+			client.Post(otherWorker+"/replicate", "application/json", bytes.NewReader(data))
+		}()
+	}
+
+	respond(w, http.StatusCreated, APIResponse{
+		Success: true,
+		Message: "Record inserted",
+		Data:    record,
+	})
+}
+
+// Election endpoints
+func (h *Handler) HandleVote(w http.ResponseWriter, r *http.Request) {
+	var req election.VoteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respond(w, http.StatusBadRequest, APIResponse{Error: err.Error()})
+		return
+	}
+
+	resp := h.raftNode.HandleVote(req)
+	respond(w, http.StatusOK, APIResponse{Success: true, Data: resp})
+}
+
+func (h *Handler) HandleHeartbeat(w http.ResponseWriter, r *http.Request) {
+	var heartbeat election.Heartbeat
+	if err := json.NewDecoder(r.Body).Decode(&heartbeat); err != nil {
+		respond(w, http.StatusBadRequest, APIResponse{Error: err.Error()})
+		return
+	}
+
+	h.raftNode.HandleHeartbeat(heartbeat)
+	respond(w, http.StatusOK, APIResponse{Success: true})
+}
+
+func (h *Handler) GetLeader(w http.ResponseWriter, r *http.Request) {
+	leader := h.raftNode.GetLeaderAddr()
+	respond(w, http.StatusOK, APIResponse{
+		Success: true,
+		Data:    map[string]string{"leader": leader},
 	})
 }

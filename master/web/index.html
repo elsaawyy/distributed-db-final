@@ -100,7 +100,6 @@
         <!-- PANEL: Explorer -->
         <div id="panel-explorer" class="panel active">
             <div class="explorer-grid">
-
                 <!-- Databases Column -->
                 <div class="explorer-col">
                     <div class="col-header">
@@ -178,7 +177,6 @@
                     </div>
                     <div id="pagination" class="pagination" style="display:none"></div>
                 </div>
-
             </div>
         </div>
 
@@ -216,9 +214,7 @@
                                 <option value="">Select table…</option>
                             </select>
                         </div>
-                        <button class="btn btn-primary" onclick="runAnalytics()" id="analyticsBtn">
-                            <span class="btn-icon">▷</span> Run Analytics
-                        </button>
+                        <button class="btn btn-primary" id="analyticsBtn" onclick="runAnalytics()">Run Analytics</button>
                     </div>
                 </div>
                 <div id="analyticsResult" class="result-box" style="display:none">
@@ -265,9 +261,7 @@
                         <label>Transformations JSON</label>
                         <textarea id="transformJson" class="code-textarea" rows="6"></textarea>
                     </div>
-                    <button class="btn btn-primary" onclick="runTransform()" id="transformBtn">
-                        <span class="btn-icon">⚙</span> Run Transform
-                    </button>
+                    <button class="btn btn-primary" id="transformBtn" onclick="runTransform()">Run Transform</button>
                 </div>
                 <div id="transformResult" class="result-box" style="display:none">
                     <div class="result-header">
